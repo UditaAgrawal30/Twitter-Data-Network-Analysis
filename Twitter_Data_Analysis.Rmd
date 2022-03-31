@@ -1,0 +1,329 @@
+---
+title: "Twitter Data Analysis"
+author: "Udita Agrawal"
+---
+```{r}
+
+#initializing all the required libraries
+
+library(dplyr)
+library(stringr)
+library(tidytext)
+library(ggplot2)
+library(tidyr)
+library(igraph)
+library(stopwords)
+library(lubridate)
+library(ggraph)
+
+#cleaning the data to include only tweets of required years
+T_2017 <- read.csv("2017.csv")
+T_2017$year <- year(T_2017$date)
+T_2017_O<-T_2017%>%
+  filter(year=="2017")
+T_2017_y <-subset(T_2017_O, select=c(tweet,year))
+T_2017_y<- as_tibble(T_2017_y) %>% 
+  mutate(document = row_number())
+
+
+T_2018 <- read.csv("2018.csv")
+T_2018$year <- year(T_2018$date)
+T_2018_O<-T_2018%>%
+  filter(year=="2018")
+T_2018_y <-subset(T_2018_O, select=c(tweet,year))
+T_2018_y <- as_tibble(T_2018_y) %>% 
+  mutate(document = row_number())
+
+T_2019 <- read.csv("2019.csv")
+T_2019$year <- year(T_2019$date)
+T_2019_O<-T_2019%>%
+  filter(year=="2019")
+T_2019_y<-subset(T_2019_O, select=c(tweet,year))
+T_2019_y <- as_tibble(T_2019_y) %>% 
+  mutate(document = row_number())
+
+
+T_2020 <- read.csv("2020.csv")
+T_2020$year <- year(T_2020$date)
+T_2020_O<-T_2020%>%
+  filter(year=="2020")
+T_2020_y <-subset(T_2020_O, select=c(tweet,year))
+T_2020_y <- as_tibble(T_2020_y) %>% 
+  mutate(document = row_number())
+
+
+T_2021 <- read.csv("2021.csv")
+T_2021$year <- year(T_2021$date)
+T_2021_O<-T_2021%>%
+  filter(year=="2021")
+T_2021_y <-subset(T_2021_O, select=c(tweet,year))
+T_2021_y <- as_tibble(T_2021_y) %>% 
+  mutate(document = row_number())
+
+tweets <- rbind(T_2017_y, T_2018_y, T_2019_y, T_2020_y, T_2021_y)
+
+#creating tokens
+
+tweets_w <- tweets %>%
+  unnest_tokens(word, tweet)
+
+#removing stop words
+
+stopword <- as_tibble(stopwords::stopwords("en")) 
+stopword <-stopword%>%
+  add_row(value=c("amp","brt","https","t.co"))
+stopword <- rename(stopword, word=value)
+tweets_w <- anti_join(tweets_w,stopword, by ='word')
+
+#Counting occurrence yearly and removing words with single character
+tweets_w<- tweets_w %>%
+  count(year,word, sort = TRUE)%>%
+  filter(nchar(word)>1)
+
+#computing total words per years
+total_w <- tweets_w %>% 
+  group_by(year) %>% 
+  summarize(total = sum(n))
+
+tweets_w <- left_join(tweets_w, total_w)
+
+#finding frequency of each word per year
+tweets_f <- tweets_w%>%
+  group_by(year, word)%>%
+  summarise(frequency=n/total)
+
+#finding words with highest frequency yearly
+top_f <- tweets_f%>%
+  arrange(year, desc(frequency))%>%
+  group_by(year)%>%
+  top_n(n=10)
+top_f
+
+#plotting histogram of word frequencies
+ggplot(tweets_f, aes(frequency, fill =year)) +
+  geom_histogram(show.legend = FALSE) +
+  xlim(NA, 0.0009) +
+  facet_wrap(~year, ncol = 2, scales = "free_y")
+
+```
+
+```{r}
+#demonstrating ZIPF's Law
+
+freq_by_rank <- tweets_w %>% 
+  group_by(year) %>% 
+  mutate(rank = row_number(), 
+         `term frequency` = n/total) %>%
+  ungroup()
+
+freq_by_rank %>% 
+  ggplot(aes(rank, `term frequency`, color = factor(year))) + 
+  geom_line(size = 1.1, alpha = 0.8, show.legend= TRUE) + 
+  scale_x_log10() +
+  scale_y_log10()
+
+
+```
+
+
+
+
+```{r}
+#creating Bigram network for each year
+
+#year 2017
+T_2017 <- subset(T_2017_O,select= tweet)
+T_2017 <- T_2017%>%
+ unnest_tokens(bigram, tweet, token = "ngrams", n = 2)
+T_2017_sep <- T_2017 %>%
+  separate(bigram, c("word1", "word2"), sep = " ")
+T_2017_fil <- T_2017_sep %>%
+  filter(!word1 %in% stopword$word) %>%
+  filter(!word2 %in% stopword$word)
+T_2017_cnt <- T_2017_fil %>% 
+  count(word1, word2, sort = TRUE)
+
+#filtering the data with count less than 2 to improve visibility
+bi_17_graph <- T_2017_cnt %>%
+  filter(n>2)%>%
+  graph_from_data_frame()
+
+set.seed(2020)
+
+a <- grid::arrow(type = "closed", length = unit(.15, "inches"))
+
+
+ggraph(bi_17_graph, layout = "fr") +
+  geom_edge_link(aes(edge_alpha = n), show.legend = FALSE,
+                 arrow = a, end_cap = circle(.07, 'inches')) +
+  geom_node_point(color = "lightblue", size = 5) +
+  geom_node_text(aes(label = name), vjust = 1, hjust = 1) +
+  theme_void()
+
+```
+
+
+```{r}
+#year 2018
+T_2018 <- subset(T_2018_O,select= tweet)
+T_2018 <- T_2018%>%
+  unnest_tokens(bigram, tweet, token = "ngrams", n = 2)
+T_2018_sep <- T_2018 %>%
+  separate(bigram, c("word1", "word2"), sep = " ")
+T_2018_fil <- T_2018_sep %>%
+  filter(!word1 %in% stopword$word) %>%
+  filter(!word2 %in% stopword$word)
+T_2018_cnt <- T_2018_fil %>% 
+  count(word1, word2, sort = TRUE)
+
+#filtering the data with count less than 2 to improve visibility
+bi_18_graph <- T_2018_cnt %>%
+  filter(n>5)%>%
+  graph_from_data_frame()
+
+set.seed(2020)
+
+a <- grid::arrow(type = "closed", length = unit(.15, "inches"))
+
+ggraph(bi_18_graph, layout = "fr") +
+  geom_edge_link(aes(edge_alpha = n), show.legend = FALSE,
+                 arrow = a, end_cap = circle(.07, 'inches')) +
+  geom_node_point(color = "lightblue", size = 5) +
+  geom_node_text(aes(label = name), vjust = 1, hjust = 1) +
+  theme_void()
+
+```
+
+
+```{r}
+
+#year 2019
+T_2019 <- subset(T_2019_O,select= tweet)
+T_2019 <- T_2019%>%
+  unnest_tokens(bigram, tweet, token = "ngrams", n = 2)
+T_2019_sep <- T_2019 %>%
+  separate(bigram, c("word1", "word2"), sep = " ")
+T_2019_fil <- T_2019_sep %>%
+  filter(!word1 %in% stop_words$word) %>%
+  filter(!word2 %in% stop_words$word)
+T_2019_cnt <- T_2019_fil %>% 
+  count(word1, word2, sort = TRUE)
+
+#filtering the data with count less than 2 to improve visibility
+bi_19_graph <- T_2019_cnt %>%
+  filter(n>5)%>%
+  graph_from_data_frame()
+
+set.seed(2020)
+
+a <- grid::arrow(type = "closed", length = unit(.15, "inches"))
+
+ggraph(bi_19_graph, layout = "fr") +
+  geom_edge_link(aes(edge_alpha = n), show.legend = FALSE,
+                 arrow = a, end_cap = circle(.07, 'inches')) +
+  geom_node_point(color = "lightblue", size = 5) +
+  geom_node_text(aes(label = name), vjust = 1, hjust = 1) +
+  theme_void()
+```
+
+```{r}
+#year 2020
+T_2020 <- subset(T_2020_O,select= tweet)
+T_2020 <- T_2020%>%
+  unnest_tokens(bigram, tweet, token = "ngrams", n = 2)
+T_2020_sep <- T_2020 %>%
+  separate(bigram, c("word1", "word2"), sep = " ")
+T_2020_fil <- T_2020_sep %>%
+  filter(!word1 %in% stop_words$word) %>%
+  filter(!word2 %in% stop_words$word)
+T_2020_cnt <- T_2020_fil %>% 
+  count(word1, word2, sort = TRUE)
+
+#filtering the data with count less than 5 to improve visibility
+bi_20_graph <- T_2020_cnt %>%
+  filter(n>5)%>%
+  graph_from_data_frame()
+
+set.seed(2020)
+
+a <- grid::arrow(type = "closed", length = unit(.15, "inches"))
+
+ggraph(bi_20_graph, layout = "fr") +
+  geom_edge_link(aes(edge_alpha = n), show.legend = FALSE,
+                 arrow = a, end_cap = circle(.07, 'inches')) +
+  geom_node_point(color = "lightblue", size = 5) +
+  geom_node_text(aes(label = name), vjust = 1, hjust = 1) +
+  theme_void()
+```
+
+```{r}
+
+#year 2021
+
+T_2021 <- subset(T_2021_O,select= tweet)
+T_2021 <- T_2021%>%
+  unnest_tokens(bigram, tweet, token = "ngrams", n = 2)
+T_2021_sep <- T_2021 %>%
+  separate(bigram, c("word1", "word2"), sep = " ")
+T_2021_fil <- T_2021_sep %>%
+  filter(!word1 %in% stop_words$word) %>%
+  filter(!word2 %in% stop_words$word)
+T_2021_cnt <- T_2021_fil %>% 
+  count(word1, word2, sort = TRUE)
+
+#filtering the data with count less than 1 to improve visibility
+bi_21_graph <- T_2021_cnt %>%
+  filter(n>2)%>%
+  graph_from_data_frame()
+
+set.seed(2020)
+
+a <- grid::arrow(type = "closed", length = unit(.15, "inches"))
+
+ggraph(bi_21_graph, layout = "fr") +
+  geom_edge_link(aes(edge_alpha = n), show.legend = FALSE,
+                 arrow = a, end_cap = circle(.07, 'inches')) +
+  geom_node_point(color = "lightblue", size = 5) +
+  geom_node_text(aes(label = name), vjust = 1, hjust = 1) +
+  theme_void()
+
+```
+
+```{r}
+#sentiment analysis of 2020 tweets using afinn which gives rating from -5 to 5
+install.packages("textdata")
+library(textdata)
+
+T_2020_s <- subset(T_2020_O,select=c("tweet","date"))
+T_2020_s$month <- month(T_2020_s$date)
+afinn <- T_2020_s %>%
+  unnest_tokens(word,tweet)%>%
+  inner_join(get_sentiments("afinn"))%>%
+  group_by(month)%>%
+  summarise(sentiment=mean(value))%>%
+  mutate(method="AFINN")
+
+afinn%>%
+  ggplot(aes(month, sentiment, fill = method)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~method, ncol = 1, scales = "free_y")
+```
+
+```{r}
+negate <- c("not","no")
+T_2020_sep_n <-  T_2020_sep %>%
+  filter(word1 %in% negate)%>%
+  inner_join(get_sentiments("afinn"),by =c(word2="word"))%>%
+  count(word1,word2,value, sort=TRUE)
+
+T_2020_sep_n %>%
+  mutate(contribution = n*value) %>%
+  arrange(desc(abs(contribution))) %>%
+  mutate(word2 = reorder(word2, contribution)) %>%
+  ggplot(aes(n * value, word2, fill = n * value > 0)) +
+  geom_col(show.legend = FALSE) +
+  labs(x = "Sentiment value * number of occurrences",
+       y = "Words preceded by negate words") + facet_wrap(~word1, ncol = 2, scales = "free_y")
+
+```
+
